@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#031b36">
+<title>Captain Saket Jha: Ocean Adventure</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#031b36;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;touch-action:none}
+canvas{display:block;width:100vw;height:100vh}
+#hud{position:fixed;top:env(safe-area-inset-top,10px);left:0;right:0;display:flex;justify-content:space-between;padding:14px 16px;pointer-events:none;font-weight:800;text-shadow:0 2px 4px #001326}
+.pill{background:#061d36c9;border:1px solid #6bd7ff70;border-radius:14px;padding:8px 12px}
+#overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:22px;background:linear-gradient(#031b3680,#03101fe8)}
+.panel{width:min(440px,100%);text-align:center;background:#06294aee;border:1px solid #61d5ff70;border-radius:24px;padding:26px 22px;box-shadow:0 18px 60px #0008}
+h1{font-size:clamp(27px,7vw,40px);line-height:1.05;margin:0 0 12px}p{color:#d6efff;line-height:1.5}
+button{border:0;border-radius:16px;background:#ffd54a;color:#10243a;font-weight:900;font-size:18px;padding:14px 24px;min-height:52px;cursor:pointer}
+.small{font-size:12px;color:#a9d4ef;margin-top:16px}
+#controls{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 20px);left:0;right:0;display:flex;justify-content:space-between;padding:0 24px;pointer-events:none}
+.control{pointer-events:auto;width:76px;height:76px;border-radius:50%;background:#06294acc;border:2px solid #b4edff9c;color:#fff;font-size:30px;font-weight:900;display:grid;place-items:center;user-select:none}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud"><div class="pill">⚓ CAPTAIN SAKET JHA</div><div class="pill">🪙 <span id="score">0</span> &nbsp; BEST <span id="best">0</span></div></div>
+<div id="overlay"><div class="panel"><h1>CAPTAIN SAKET JHA<br><span style="color:#ffd54a">OCEAN ADVENTURE</span></h1><p>Take command of your ship. Dodge the rocks, collect gold coins, and survive the open sea!</p><p>Use the ◀ ▶ buttons or tap either side of the screen to steer.</p><button id="start">SET SAIL</button><div class="small">A casual arcade game • Made for mobile screens</div></div></div>
+<div id="controls" class="hidden"><div class="control" id="left">‹</div><div class="control" id="right">›</div></div>
+<script>
+(()=> {
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const scoreEl=document.getElementById('score'),bestEl=document.getElementById('best'),overlay=document.getElementById('overlay'),startBtn=document.getElementById('start'),controls=document.getElementById('controls');
+let W=0,H=0,dpr=1,playing=false,score=0,best=+(localStorage.getItem('csja_best')||0),last=0,spawn=0,coinSpawn=0,rocks=[],coins=[],particles=[],keys={left:false,right:false},player={x:0,y:0,w:38,h:56,speed:330},world=0;
+bestEl.textContent=best;
+function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;canvas.width=W*dpr;canvas.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);player.y=H*.76;player.x=Math.max(20,Math.min(W-20,player.x||W/2));}
+addEventListener('resize',resize);resize();
+function rounded(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill();}
+function drawShip(x,y){ctx.save();ctx.translate(x,y);ctx.fillStyle='#071d31';ctx.beginPath();ctx.moveTo(-19,-24);ctx.lineTo(19,-24);ctx.lineTo(15,17);ctx.lineTo(0,30);ctx.lineTo(-15,17);ctx.closePath();ctx.fill();ctx.fillStyle='#f5f8fc';rounded(-14,-24,28,30,5);ctx.fillStyle='#e94c4c';ctx.fillRect(-14,1,28,6);ctx.fillStyle='#253e58';ctx.fillRect(-8,-18,16,8);ctx.fillStyle='#ffd54a';ctx.fillRect(-3,-37,6,13);ctx.fillStyle='#fff';ctx.fillRect(-1,-32,15,3);ctx.restore();}
+function bg(dt){world+=dt;let g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#0a426c');g.addColorStop(.5,'#087da0');g.addColorStop(1,'#032b52');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ctx.strokeStyle='#a3edff20';ctx.lineWidth=1;for(let i=0;i<16;i++){let y=((i*91+world*90)%(H+90))-30;ctx.beginPath();for(let x=0;x<=W;x+=24){let yy=y+Math.sin(x*.018+world*1.4+i)*5; x===0?ctx.moveTo(x,yy):ctx.lineTo(x,yy)}ctx.stroke();}
+}
+function rockDraw(o){ctx.save();ctx.translate(o.x,o.y);ctx.rotate(o.rot);ctx.fillStyle='#5c6877';ctx.strokeStyle='#aab6c4';ctx.lineWidth=2;ctx.beginPath();for(let i=0;i<8;i++){let a=i*Math.PI/4,r=o.r*(.78+Math.sin(i*5+o.seed)*.22);let x=Math.cos(a)*r,y=Math.sin(a)*r;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();}
+function coinDraw(c){ctx.fillStyle='#ffca28';ctx.beginPath();ctx.arc(c.x,c.y,c.r,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#fff0a6';ctx.lineWidth=3;ctx.stroke();ctx.fillStyle='#9a5a00';ctx.font='bold 15px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('$',c.x,c.y+1);}
+function spawnRock(){let r=18+Math.random()*13;rocks.push({x:r+Math.random()*(W-r*2),y:-r,r,rot:Math.random()*6,seed:Math.random()*9,speed:190+Math.min(score*1.2,170)});}
+function spawnCoin(){coins.push({x:22+Math.random()*(W-44),y:-20,r:12,speed:180+Math.min(score,140)});}
+function hit(a,b,rad){return Math.hypot(a.x-b.x,a.y-b.y)<rad;}
+function endGame(){playing=false;controls.classList.add('hidden');overlay.style.display='flex';overlay.querySelector('h1').innerHTML='VOYAGE OVER<br><span style="color:#ffd54a">CAPTAIN!</span>';overlay.querySelector('p').innerHTML=`You collected <b>${score}</b> coins.<br>Best voyage: <b>${best}</b> coins. Ready for another run?`;startBtn.textContent='SAIL AGAIN';}
+function start(){score=0;rocks=[];coins=[];particles=[];spawn=0;coinSpawn=.7;player.x=W/2;player.y=H*.76;playing=true;last=performance.now();overlay.style.display='none';controls.classList.remove('hidden');scoreEl.textContent=score;requestAnimationFrame(loop);}
+function loop(now){if(!playing)return;let dt=Math.min((now-last)/1000,.035);last=now;bg(dt);
+if(keys.left)player.x-=player.speed*dt;if(keys.right)player.x+=player.speed*dt;player.x=Math.max(24,Math.min(W-24,player.x));
+spawn-=dt;coinSpawn-=dt;if(spawn<=0){spawnRock();spawn=Math.max(.32,.8-score*.002)}if(coinSpawn<=0){spawnCoin();coinSpawn=.85+Math.random()*.7}
+rocks.forEach(o=>{o.y+=o.speed*dt;o.rot+=dt*.8;rockDraw(o)});coins.forEach(c=>{c.y+=c.speed*dt;coinDraw(c)});
+rocks=rocks.filter(o=>o.y<H+50);coins=coins.filter(c=>c.y<H+30);
+drawShip(player.x,player.y);
+for(let i=rocks.length-1;i>=0;i--){let o=rocks[i];if(hit(player,o,o.r+19)){endGame();return}}
+for(let i=coins.length-1;i>=0;i--){let c=coins[i];if(hit(player,c,31)){coins.splice(i,1);score+=10;scoreEl.textContent=score;if(score>best){best=score;localStorage.setItem('csja_best',best);bestEl.textContent=best}for(let k=0;k<8;k++)particles.push({x:c.x,y:c.y,vx:(Math.random()-.5)*130,vy:(Math.random()-.5)*130,t:.5})}}
+particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.t-=dt;ctx.globalAlpha=Math.max(0,p.t*2);ctx.fillStyle='#ffe66b';ctx.fillRect(p.x,p.y,4,4)});ctx.globalAlpha=1;particles=particles.filter(p=>p.t>0);
+requestAnimationFrame(loop)}
+function bind(id,dir){const el=document.getElementById(id);const down=e=>{e.preventDefault();keys[dir]=true},up=e=>{e.preventDefault();keys[dir]=false};el.addEventListener('pointerdown',down);['pointerup','pointercancel','pointerleave'].forEach(ev=>el.addEventListener(ev,up))}
+bind('left','left');bind('right','right');
+canvas.addEventListener('pointerdown',e=>{if(!playing)return;keys[e.clientX<W/2?'left':'right']=true;setTimeout(()=>{keys.left=false;keys.right=false},160)});
+startBtn.addEventListener('click',start);
+document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='a')keys.left=true;if(e.key==='ArrowRight'||e.key==='d')keys.right=true;if(e.key===' '&&!playing)start()});
+document.addEventListener('keyup',e=>{if(e.key==='ArrowLeft'||e.key==='a')keys.left=false;if(e.key==='ArrowRight'||e.key==='d')keys.right=false});
+bg(0);
+})();
+</script>
+</body></html>
